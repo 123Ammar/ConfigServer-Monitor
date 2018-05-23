@@ -1,0 +1,18 @@
+spring:
+  application:
+    name: config-monitor-middleware
+  datasource:
+    driver-class-name: oracle.jdbc.driver.OracleDriver
+    url: jdbc:oracle:thin:@//aoadbsq00002c0.tfayd.com:15193/U124rpt
+    username: onair
+    password: nbcci
+security:
+  basic:
+    enabled: false
+management:
+  security:
+    enabled: false
+    
+    
+refresh:
+  endPoint: /refresh
