@@ -20,7 +20,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
-import com.cg.app.constants.MonitorConstant;
 import com.cg.app.exception.RetryException;
 
 @Service
@@ -63,27 +62,13 @@ public class MiddlewareServiceImpl implements MiddlewareService {
 
 		if (!"".equalsIgnoreCase(branchName) && modifiedFileList.size() > 0) {
 			logger.info("Branch Name: " + branchName + " Modifed Files: " + modifiedFileList.toString());
-
-			switch (branchName) {
-			case MonitorConstant.DEVELOP:
 				refreshApplicationConfig(modifiedFileList, branchName);
-				break;
-			case MonitorConstant.STAGE:
-				refreshApplicationConfig(modifiedFileList, branchName);
-				break;
-			case MonitorConstant.QA:
-				refreshApplicationConfig(modifiedFileList, branchName);
-				break;
-			default:
-				break;
-			}
-
 		}
 	}
 
 	public void refreshApplicationConfig(List<String> modifiedFileList, String branchName) {
 
-		logger.info("Refreshing application of " + modifiedFileList.toString() + " file In the  " + branchName + " branch");
+		logger.info("Refreshing application of " + modifiedFileList.toString() + " file In the  [" + branchName + "] branch");
 
 		spaceName = getSpaceDetails(branchName);
 		
@@ -98,8 +83,8 @@ public class MiddlewareServiceImpl implements MiddlewareService {
 								  applicationURLStr = application.getUrls().get(0);
 								  applicationURLStr = "http://" + applicationURLStr + REFRESH_END_POINT; 
 									  	Map<String, String>   params = new HashMap<>(); params.put("data", "Posting blank data");
-								  		logger.info("Started Posting the data to the URL "); String response =
-								  		restTemplate.postForObject(applicationURLStr, params, String.class);
+								  		logger.info("Started Posting the data to the URL "+applicationURLStr);
+								  		String response = restTemplate.postForObject(applicationURLStr, params, String.class);
 								  		logger.info("Application Properties changed : " + response); 
 							  }
 						  }
