@@ -142,7 +142,6 @@ public class MiddlewareServiceImpl implements MiddlewareService {
 
 		ConnectionContext connection = DefaultConnectionContext.builder()
 				.apiHost(API_HOST)
-				.skipSslValidation(true)
 				.build();
 
 		AbstractUaaTokenProvider tokenProvider = createTokenProvider();
