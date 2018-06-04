@@ -1,16 +1,27 @@
 package com.cg.app.service;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.apache.log4j.Logger;
+import org.cloudfoundry.doppler.DopplerClient;
 import org.cloudfoundry.operations.CloudFoundryOperations;
-import org.json.JSONArray;
-import org.json.JSONObject;
+import org.cloudfoundry.operations.DefaultCloudFoundryOperations;
+import org.cloudfoundry.reactor.ConnectionContext;
+import org.cloudfoundry.reactor.DefaultConnectionContext;
+import org.cloudfoundry.reactor.client.ReactorCloudFoundryClient;
+import org.cloudfoundry.reactor.doppler.ReactorDopplerClient;
+import org.cloudfoundry.reactor.tokenprovider.AbstractUaaTokenProvider;
+import org.cloudfoundry.reactor.tokenprovider.PasswordGrantTokenProvider;
+import org.cloudfoundry.reactor.uaa.ReactorUaaClient;
+import org.cloudfoundry.uaa.UaaClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
 import com.cg.app.constants.MonitorConstant;
+import com.cg.app.exception.RetryException;
 
 @Service
 public class MiddlewareServiceImpl implements MiddlewareService {
@@ -24,68 +35,151 @@ public class MiddlewareServiceImpl implements MiddlewareService {
 	RestTemplate restTemplate;
 
 	@Autowired
-	private CloudFoundryOperations cfOps;
-
-	@Autowired
 	private Logger logger;
 
+	@Value("${cf.space}")
+	String SPACE_DETAILS;
+
+	@Value("${cf.organization}")
+	String ORG_NAME;
+
+	String spaceName = BLANK;
+
+	@Value("${cf.username}")
+	String USER;
+
+	@Value("${cf.password}")
+	String PASSWORD;
+	
+	@Value("${cf.apiHost}")
+	String API_HOST;
+
+
+	CloudFoundryOperations cfops = null;
+	
+
 	@Override
-	public void processPayload(String payload) {
+	public void processPayload(List<String> modifiedFileList, String branchName) {
 
-		String modifiedFile = BLANK;
-		String branchName = BLANK;
-
-		JSONObject payloadObj = new JSONObject(payload);
-		JSONArray commitTag = payloadObj.getJSONArray("commits");
-
-		branchName = payloadObj.get("ref").toString().replaceAll("refs/heads/", "");
-		String commit = commitTag.toString().substring(1, commitTag.toString().length() - 1);
-
-		JSONObject commitObj = new JSONObject(commit);
-		JSONArray modifiedTag = commitObj.getJSONArray("modified");
-		if (null != modifiedTag) {
-			modifiedFile = modifiedTag.toString().substring(1, modifiedTag.toString().length() - 1)
-					.replaceAll(".yml", "").replaceAll("\"", "");
-		}
-		if (!"".equalsIgnoreCase(branchName) && !"".equalsIgnoreCase(modifiedFile)) {
-			logger.info("Branch Name: " + branchName + " Modifed File: " + modifiedFile);
+		if (!"".equalsIgnoreCase(branchName) && modifiedFileList.size() > 0) {
+			logger.info("Branch Name: " + branchName + " Modifed Files: " + modifiedFileList.toString());
 
 			switch (branchName) {
 			case MonitorConstant.DEVELOP:
-				refreshApplicationConfig(modifiedFile, branchName);
+				refreshApplicationConfig(modifiedFileList, branchName);
 				break;
 			case MonitorConstant.STAGE:
-				refreshApplicationConfig(modifiedFile, branchName);
+				refreshApplicationConfig(modifiedFileList, branchName);
 				break;
 			case MonitorConstant.QA:
-				refreshApplicationConfig(modifiedFile, branchName);
+				refreshApplicationConfig(modifiedFileList, branchName);
 				break;
 			default:
 				break;
 			}
+
 		}
 	}
 
-	public void refreshApplicationConfig(String modifiedFile, String branchName) {
+	public void refreshApplicationConfig(List<String> modifiedFileList, String branchName) {
 
-		logger.info("Refreshing application of " + modifiedFile + " file In the  " + branchName + " branch");
+		logger.info("Refreshing application of " + modifiedFileList.toString() + " file In the  " + branchName + " branch");
 
-		cfOps.applications().list().subscribe(application -> {
-			String applicationURLStr = BLANK;
-			if (application.getName().equals(modifiedFile)) {
-				applicationURLStr = application.getUrls().get(0);
-				applicationURLStr = "http://" + applicationURLStr + REFRESH_END_POINT;
-				System.out.println("App URL : " + applicationURLStr);
-				Map<String, String> params = new HashMap<>();
-				params.put("data", "Posting blank data");
-				try {
-					String response = restTemplate.postForObject(applicationURLStr, params, String.class);
-					logger.info("Response Message : " + response);
-				} catch (Exception e) {
-					e.printStackTrace();
-				}
+		spaceName = getSpaceDetails(branchName);
+		
+		if(!StringUtils.isEmpty(spaceName)) {
+			getPCFServiceConnection(spaceName);
+			
+			try {
+				  cfops.applications().list().subscribe(application -> { 
+						  String applicationURLStr = BLANK; for (int i = 0; i < modifiedFileList.size(); i++)
+						  {
+							  if (application.getName().equals(modifiedFileList.get(i).replaceAll(".yml",""))) { 
+								  applicationURLStr = application.getUrls().get(0);
+								  applicationURLStr = "http://" + applicationURLStr + REFRESH_END_POINT; 
+									  	Map<String, String>   params = new HashMap<>(); params.put("data", "Posting blank data");
+								  		logger.info("Started Posting the data to the URL "); String response =
+								  		restTemplate.postForObject(applicationURLStr, params, String.class);
+								  		logger.info("Application Properties changed : " + response); 
+							  }
+						  }
+				  });
+				  
+			}catch(Exception e) {
+				throw new RetryException(e.getMessage());
 			}
-		});
-
+		}
 	}
+	
+
+	public String getSpaceDetails(String branchName) {
+
+		String spaceDetArr[] = SPACE_DETAILS.split(";");
+
+		Map<String, String> mp = new HashMap<>();
+
+		for (int i = 0; i < spaceDetArr.length; i++) {
+			String[] space = null;
+			space = spaceDetArr[i].split(",");
+
+			for (int j = 0; j < space.length; j++) {
+				mp.put(space[j], space[++j]);
+			}
+		}
+
+		for (Map.Entry<String, String> entry : mp.entrySet()) {
+
+			if (branchName.equalsIgnoreCase(entry.getKey())) {
+				return entry.getValue().toString();
+
+			}
+
+		}
+		return "";
+	}
+
+	public void getPCFServiceConnection(String space) {
+
+		ConnectionContext connection = DefaultConnectionContext.builder()
+				.apiHost(API_HOST)
+				.skipSslValidation(true)
+				.build();
+
+		AbstractUaaTokenProvider tokenProvider = createTokenProvider();
+
+		ReactorCloudFoundryClient client = ReactorCloudFoundryClient.builder()
+				.connectionContext(connection)
+				.tokenProvider(tokenProvider)
+				.build();
+
+		UaaClient uaaClient = ReactorUaaClient.builder()
+				.connectionContext(connection)
+				.tokenProvider(tokenProvider)
+				.build();
+
+		DopplerClient doppler = ReactorDopplerClient.builder()
+				.connectionContext(connection)
+				.tokenProvider(tokenProvider)
+				.build();
+
+		cfops = DefaultCloudFoundryOperations.builder()
+				.cloudFoundryClient(client)
+				.dopplerClient(doppler)
+				.uaaClient(uaaClient)
+				.organization(ORG_NAME)
+				.space(space)
+				.build();
+		
+		
+	}
+
+		protected AbstractUaaTokenProvider createTokenProvider() {
+				return PasswordGrantTokenProvider.builder()
+						.username(USER)
+						.password(PASSWORD)
+						.build();
+		
+		
+	}
+
 }

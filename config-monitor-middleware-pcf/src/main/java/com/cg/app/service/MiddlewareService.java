@@ -1,6 +1,8 @@
 package com.cg.app.service;
 
+import java.util.List;
+
 public interface MiddlewareService {
 
-	public void processPayload(String payload);
+	public void processPayload(List<String> modifiedFileList, String branchName);
 }

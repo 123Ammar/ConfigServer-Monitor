@@ -1,6 +1,11 @@
 spring:
   application:
     name: config-monitor-middleware
+  mail:
+    host: ny09nbcge.nbc.com 
+    port: 25
+    username: 502077553
+    password: abcd
 
 security:
   basic:
@@ -8,8 +13,7 @@ security:
 management:
   security:
     enabled: false
-    
-    
+     
 refresh:
   endPoint: /refresh
   
@@ -18,4 +22,13 @@ cf:
   username: 206426113
   password: P@55word
   organization: POC
-  space: SRA-Linear-Programmatic
+  space: develop,SRA-Linear-Programmatic;qa,SRA-Linear-Programmatic;
+  
+mail:
+  to: Mohammed.AmmarM@nbcuni.com
+  from: Mohammed.AmmarM@nbcuni.com
+  subject: Unable to refresh the config file changes 
+ 
+
+ 
+ 
